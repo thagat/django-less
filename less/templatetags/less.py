@@ -1,15 +1,18 @@
 from tempfile import NamedTemporaryFile
 from ..cache import get_cache_key, get_hexdigest, get_hashed_mtime
-from ..settings import LESS_EXECUTABLE, LESS_USE_CACHE,\
-    LESS_CACHE_TIMEOUT, LESS_OUTPUT_DIR
+from ..settings import (LESS_EXECUTABLE, LESS_USE_CACHE,
+                        LESS_CACHE_TIMEOUT, LESS_OUTPUT_DIR)
 from ..utils import URLConverter
-from django.conf import settings
 from django.core.cache import cache
+from django.conf import settings
+from django.contrib.staticfiles.finders import find
 from django.template.base import Library, Node
+
+import glob
 import logging
+import os
 import shlex
 import subprocess
-import os
 import sys
 
 
@@ -23,8 +26,6 @@ class InlineLessNode(Node):
         self.nodelist = nodelist
 
     def compile(self, source):
-
-
         source_file = NamedTemporaryFile(delete=False)
         source_file.write(source)
         source_file.close()
@@ -51,8 +52,7 @@ class InlineLessNode(Node):
             output = self.compile(output)
             cache.set(cache_key, output, LESS_CACHE_TIMEOUT)
             return output
-        else:
-            return self.compile(output)
+        return self.compile(output)
 
 
 @register.tag(name="inlineless")
@@ -64,34 +64,23 @@ def do_inlineless(parser, token):
 
 @register.simple_tag
 def less(path):
+    STATIC_ROOT = settings.STATIC_ROOT
+    STATIC_URL = settings.STATIC_URL
+    encoded_full_path = full_path = find(path)
 
-    try:
-        STATIC_ROOT = settings.STATIC_ROOT
-    except AttributeError:
-        STATIC_ROOT = settings.MEDIA_ROOT
-
-    try:
-        STATIC_URL = settings.STATIC_URL
-    except AttributeError:
-        STATIC_URL = settings.MEDIA_URL
-
-    encoded_full_path = full_path = os.path.join(STATIC_ROOT, path)
     if isinstance(full_path, unicode):
         filesystem_encoding = sys.getfilesystemencoding() or sys.getdefaultencoding()
         encoded_full_path = full_path.encode(filesystem_encoding)
 
-    filename = os.path.split(path)[-1]
+    if full_path is None:
+        # file does not exist
+        return u''
 
-    output_directory = os.path.join(STATIC_ROOT, LESS_OUTPUT_DIR, os.path.dirname(path))
-
+    output_directory, filename = os.path.split(encoded_full_path)
     hashed_mtime = get_hashed_mtime(full_path)
-
-    if filename.endswith(".less"):
-        base_filename = filename[:-5]
-    else:
-        base_filename = filename
-
-    output_path = os.path.join(output_directory, "%s-%s.css" % (base_filename, hashed_mtime))
+    base_filename = os.path.splitext(filename)[0]
+    compiled_filename = "%s-%s.css" % (base_filename, hashed_mtime)
+    output_path = os.path.join(output_directory, compiled_filename)
 
     if not os.path.exists(output_path):
         command = "%s %s" % (LESS_EXECUTABLE, encoded_full_path)
@@ -101,17 +90,17 @@ def less(path):
         if out:
             if not os.path.exists(output_directory):
                 os.makedirs(output_directory)
-            compiled_file = open(output_path, "w+")
-            compiled_file.write(URLConverter(out, os.path.join(STATIC_URL, path)).convert())
-            compiled_file.close()
+            with open(output_path, "w+") as compiled_file:
+                compiled_file.write(URLConverter(out, os.path.join(STATIC_URL, path)).convert())
 
-            # Remove old files
-            compiled_filename = os.path.split(output_path)[-1]
-            for filename in os.listdir(output_directory):
-                if filename.startswith(base_filename) and filename != compiled_filename:
-                    os.remove(os.path.join(output_directory, filename))
+            pattern = os.path.join(output_directory, "%s-*.css" % base_filename)
+            old_filenames = glob.glob(pattern)
+            if compiled_filename in old_filenames:
+                old_filenames.remove(compiled_filename)
+            for filename in old_filenames:
+                os.remove(os.path.join(output_directory, filename))
+
         elif errors:
             logger.error(errors)
             return path
-
-    return output_path[len(STATIC_ROOT):].replace(os.sep, '/').lstrip("/")
+    return path[:len(filename)+1]+compiled_filename
