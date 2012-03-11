@@ -66,17 +66,22 @@ def do_inlineless(parser, token):
 def less(path):
     STATIC_ROOT = settings.STATIC_ROOT
     STATIC_URL = settings.STATIC_URL
+    LESS_BUILD_DIR = settings.LESS_BUILD_DIR if hasattr(settings, 'LESS_BUILD_DIR') else 'lessbuild'
+
+    # locate the static file
     encoded_full_path = full_path = find(path)
 
     if isinstance(full_path, unicode):
         filesystem_encoding = sys.getfilesystemencoding() or sys.getdefaultencoding()
         encoded_full_path = full_path.encode(filesystem_encoding)
+    
+    # file does not exist
+    if full_path is None:        
+        logger.error('less source file %s not found by staticfiles finders' % path)
+        return path
 
-    if full_path is None:
-        # file does not exist
-        return u''
-
-    output_directory, filename = os.path.split(encoded_full_path)
+    directory, filename = os.path.split(encoded_full_path)
+    output_directory = os.path.join(directory, LESS_BUILD_DIR)
     hashed_mtime = get_hashed_mtime(full_path)
     base_filename = os.path.splitext(filename)[0]
     compiled_filename = "%s-%s.css" % (base_filename, hashed_mtime)
@@ -87,20 +92,27 @@ def less(path):
         args = shlex.split(command)
         p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         out, errors = p.communicate()
+        out = out.strip()
         if out:
+            # if there is any output, write it to a file
             if not os.path.exists(output_directory):
                 os.makedirs(output_directory)
+
             with open(output_path, "w+") as compiled_file:
+                import pdb; pdb.set_trace()
                 compiled_file.write(URLConverter(out, os.path.join(STATIC_URL, path)).convert())
 
+            # cleanup old files
             pattern = os.path.join(output_directory, "%s-*.css" % base_filename)
             old_filenames = glob.glob(pattern)
-            if compiled_filename in old_filenames:
-                old_filenames.remove(compiled_filename)
             for filename in old_filenames:
-                os.remove(os.path.join(output_directory, filename))
+                if not filename == compiled_filename:
+                    logger.info('Removing old file %s' % filename)
+                    os.remove(os.path.join(output_directory, filename))
 
         elif errors:
             logger.error(errors)
             return path
-    return path[:len(filename)+1]+compiled_filename
+
+    output_url = os.path.join(os.path.dirname(path), LESS_BUILD_DIR, compiled_filename)
+    return output_url
