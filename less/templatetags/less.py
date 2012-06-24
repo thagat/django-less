@@ -1,7 +1,9 @@
+""" This file contains the definitions for the less template tag """
+
 from tempfile import NamedTemporaryFile
 from ..cache import get_cache_key, get_hexdigest, get_hashed_mtime
-from ..settings import (LESS_EXECUTABLE, LESS_USE_CACHE,
-                        LESS_CACHE_TIMEOUT, LESS_OUTPUT_DIR)
+from ..settings import LESS_EXECUTABLE, LESS_USE_CACHE, LESS_CACHE_TIMEOUT
+from ..settings import LESS_OUTPUT_DIR
 from ..utils import URLConverter
 from django.core.cache import cache
 from django.conf import settings
@@ -14,7 +16,6 @@ import os
 import shlex
 import subprocess
 import sys
-
 
 logger = logging.getLogger("less")
 register = Library()
@@ -31,7 +32,8 @@ class InlineLessNode(Node):
         source_file.close()
         args = shlex.split("%s %s" % (LESS_EXECUTABLE, source_file.name))
 
-        p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p = subprocess.Popen(args, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE)
         out, errors = p.communicate()
         os.remove(source_file.name)
         if out:
@@ -64,24 +66,24 @@ def do_inlineless(parser, token):
 
 @register.simple_tag
 def less(path):
-    STATIC_ROOT = settings.STATIC_ROOT
     STATIC_URL = settings.STATIC_URL
-    LESS_BUILD_DIR = settings.LESS_BUILD_DIR if hasattr(settings, 'LESS_BUILD_DIR') else 'lessbuild'
 
     # locate the static file
     encoded_full_path = full_path = find(path)
 
     if isinstance(full_path, unicode):
-        filesystem_encoding = sys.getfilesystemencoding() or sys.getdefaultencoding()
+        filesystem_encoding = (sys.getfilesystemencoding() or
+                               sys.getdefaultencoding())
         encoded_full_path = full_path.encode(filesystem_encoding)
-    
+
     # file does not exist
-    if full_path is None:        
-        logger.error('less source file %s not found by staticfiles finders' % path)
+    if full_path is None:
+        logger.error('less source file %s not found by staticfiles finders' %
+                     path)
         return path
 
     directory, filename = os.path.split(encoded_full_path)
-    output_directory = os.path.join(directory, LESS_BUILD_DIR)
+    output_directory = os.path.join(directory, LESS_OUTPUT_DIR)
     hashed_mtime = get_hashed_mtime(full_path)
     base_filename = os.path.splitext(filename)[0]
     compiled_filename = "%s-%s.css" % (base_filename, hashed_mtime)
@@ -90,7 +92,8 @@ def less(path):
     if not os.path.exists(output_path):
         command = "%s %s" % (LESS_EXECUTABLE, encoded_full_path)
         args = shlex.split(command)
-        p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p = subprocess.Popen(args, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE)
         out, errors = p.communicate()
         out = out.strip()
         if out:
@@ -99,14 +102,16 @@ def less(path):
                 os.makedirs(output_directory)
 
             with open(output_path, "w+") as compiled_file:
-                import pdb; pdb.set_trace()
-                compiled_file.write(URLConverter(out, os.path.join(STATIC_URL, path)).convert())
+                css_code = URLConverter(out, os.path.join(STATIC_URL,
+                                                          path)).convert()
+                compiled_file.write(css_code)
 
             # cleanup old files
-            pattern = os.path.join(output_directory, "%s-*.css" % base_filename)
+            pattern = os.path.join(output_directory,
+                                   "%s-*.css" % base_filename)
             old_filenames = glob.glob(pattern)
             for filename in old_filenames:
-                if not filename == compiled_filename:
+                if not filename == output_path:
                     logger.info('Removing old file %s' % filename)
                     os.remove(os.path.join(output_directory, filename))
 
@@ -114,5 +119,6 @@ def less(path):
             logger.error(errors)
             return path
 
-    output_url = os.path.join(os.path.dirname(path), LESS_BUILD_DIR, compiled_filename)
+    output_url = os.path.join(os.path.dirname(path), LESS_OUTPUT_DIR,
+                              compiled_filename)
     return output_url
