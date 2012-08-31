@@ -4,7 +4,7 @@ from django.utils.importlib import import_module
 from tempfile import NamedTemporaryFile
 from ..cache import get_cache_key, get_hexdigest, get_hashed_mtime
 from ..settings import LESS_EXECUTABLE, LESS_USE_CACHE, LESS_CACHE_TIMEOUT
-from ..settings import LESS_OUTPUT_DIR
+from ..settings import LESS_OUTPUT_DIR, INCLUDE_APP_DIRS
 from ..utils import URLConverter
 from django.core.cache import cache
 from django.conf import settings
