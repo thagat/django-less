@@ -4,7 +4,7 @@ from django.utils.importlib import import_module
 from tempfile import NamedTemporaryFile
 from ..cache import get_cache_key, get_hexdigest, get_hashed_mtime
 from ..settings import LESS_EXECUTABLE, LESS_USE_CACHE, LESS_CACHE_TIMEOUT
-from ..settings import LESS_OUTPUT_DIR, INCLUDE_APP_DIRS
+from ..settings import LESS_OUTPUT_DIR, LESS_INCLUDE_APP_STATIC_DIRS
 from ..utils import URLConverter
 from django.core.cache import cache
 from django.conf import settings
@@ -110,7 +110,7 @@ def less(path):
     if not os.path.exists(output_path):
         options = []
 
-        if INCLUDE_APP_DIRS:
+        if LESS_INCLUDE_APP_STATIC_DIRS:
             app_paths = _get_app_paths()
             app_paths_import = ':'.join(app_paths)
             options.append('--include-path=' + app_paths_import)
