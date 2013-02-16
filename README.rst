@@ -98,3 +98,6 @@ Settings
     
 ``LESS_MTIME_DELAY``
     Cache timeout for reading the modification time of external stylesheets (in seconds). Default: 10 seconds.
+
+``LESS_INCLUDE_APP_STATIC_DIRS``
+    Include the static dirs from all of the apps in INSTALLED_APPS in the lessc import search path. Default: ``False``

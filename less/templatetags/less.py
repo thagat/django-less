@@ -1,9 +1,10 @@
 """ This file contains the definitions for the less template tag """
+from django.utils.importlib import import_module
 
 from tempfile import NamedTemporaryFile
 from ..cache import get_cache_key, get_hexdigest, get_hashed_mtime
 from ..settings import LESS_EXECUTABLE, LESS_USE_CACHE, LESS_CACHE_TIMEOUT
-from ..settings import LESS_OUTPUT_DIR
+from ..settings import LESS_OUTPUT_DIR, LESS_INCLUDE_APP_STATIC_DIRS
 from ..utils import URLConverter
 from django.core.cache import cache
 from django.conf import settings
@@ -64,8 +65,25 @@ def do_inlineless(parser, token):
     return InlineLessNode(nodelist)
 
 
+def _get_app_paths():
+    """
+    Return the filesystem path to the `static` folder of each app in
+    INSTALLED_APPS, for the apps which have a `static` folder
+    """
+    app_paths = []
+    for app in settings.INSTALLED_APPS:
+    # app is the app module name
+        mod = import_module(app)
+        mod_path = os.path.dirname(mod.__file__)
+        location = os.path.join(mod_path, 'static')
+        if os.path.exists(location):
+            app_paths.append(location)
+
+    return app_paths
+
 @register.simple_tag
 def less(path):
+
     STATIC_URL = settings.STATIC_URL
 
     # locate the static file
@@ -90,7 +108,16 @@ def less(path):
     output_path = os.path.join(output_directory, compiled_filename)
 
     if not os.path.exists(output_path):
-        command = "%s %s" % (LESS_EXECUTABLE, encoded_full_path)
+        options = []
+
+        if LESS_INCLUDE_APP_STATIC_DIRS:
+            app_paths = _get_app_paths()
+            app_paths_import = ':'.join(app_paths)
+            options.append('--include-path=' + app_paths_import)
+
+        command = "%s %s %s" % (
+            LESS_EXECUTABLE, ' '.join(options), encoded_full_path
+        )
         args = shlex.split(command)
         p = subprocess.Popen(args, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE)
